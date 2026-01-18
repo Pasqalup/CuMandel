@@ -4,7 +4,6 @@
 #include "device_launch_parameters.h"
 #include <cuComplex.h>
 #include <vector>
-#include "stb_image_write.h"
 #include <tuple>
 #include <math.h>
 #include <stdio.h>
@@ -162,12 +161,12 @@ void prepareCoordinates(
         }
     }
 }
-void saveFractalPNG(const std::vector<unsigned char>& rgbData, int width, int height,int i) {
-	std::string filename = "frame" + std::to_string(i) + ".png";
-    if (!stbi_write_png("fractal%d.png", width, height, 3, rgbData.data(), width * 3)) {
-        std::cerr << "Failed to write image\n";
-    }
-}
+//void saveFractalPNG(const std::vector<unsigned char>& rgbData, int width, int height,int i) {
+//	std::string filename = "frame" + std::to_string(i) + ".png";
+//    if (!stbi_write_png("fractal%d.png", width, height, 3, rgbData.data(), width * 3)) {
+//        std::cerr << "Failed to write image\n";
+//    }
+//}
 class CudaFractalGenerator {
 
     cuDoubleComplex* d_z = nullptr;
