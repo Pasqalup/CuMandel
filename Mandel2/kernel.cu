@@ -11,7 +11,9 @@
 #include <chrono>
 #include <opencv2/opencv.hpp>
 #include <string>
-
+#include <iomanip>
+#include <limits>
+#include <Windows.h>
 #define MAX_ITER 1500
 
 #define a 0.01
@@ -22,6 +24,11 @@ struct Point {
 struct Window {
     int width;
     int height;
+};
+struct NamedPoint {
+    std::string name;
+    std::string description;
+    Point point;
 };
 struct RGB { unsigned char r, g, b; };
 __global__ void addKernel(cuDoubleComplex* z, int* n, const cuDoubleComplex* c, int max)
@@ -97,7 +104,7 @@ __global__ void coordsKernel(cuDoubleComplex* coords,
     int x = idx % width;
     int y = idx / width;
     
-    double real = fma((double)(x - width / 2), 1.0 / (zoom * width), centerX);
+    double real = fma((double)(x - width / 2), 1.0 / (zoom * height), centerX);
     double imag = fma((double)(y - height / 2), 1.0 / (zoom * height), centerY);
     
     coords[idx] = make_cuDoubleComplex(real, imag);
@@ -111,7 +118,7 @@ class CudaFractalGenerator {
     int size = 0;
     int width = 1024;
     int height = 1024;
-    int blockSize = 256;
+    int blockSize = 512;
     int gridSize = 0;
     cudaStream_t stream = nullptr;
 
@@ -175,17 +182,81 @@ public:
     }
 };
 
+bool endsWith(const std::string& str, const std::string& suffix) {
+    if (str.length() < suffix.length()) return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+}
+
 int main()
 {
+    std::cout << std::fixed << std::setprecision(std::numeric_limits<double>::digits10 + 1);
+    SetConsoleOutputCP(CP_UTF8);
     const int width = 1024;
     const int height = 1024;
 
     const int arraySize = width * height;
     //Point center = { -1.74528, 0.003331 };
-    Point center = { -1.7452751580045,-0.0033287424761 };
+    //Point center = { -1.7452751580045,-0.0033287424761 };
 	Window window = { width, height };
     //Point center = { -0.1528467399413 , -1.0396951458385 };
-    double zoom = 0.5;
+    //Point center = { -0.167248036826,1.0411626767681 };
+    std::vector<NamedPoint> presetPoints = {
+        {"Circuit", "Explore how fractals increase in complexity", { -0.167248036826,1.0411626767681}},
+        {u8"Julia in the brot²", "Find a julia set inside the Mandelbrot. Twice." , { -1.7452751580045,-0.0033287424761 }},
+        {"Mini-brots", "Zooms into a repition of smaller copies of the mandelbrot", { -0.1528467399413 , -1.0396951458385}}
+    };
+
+    std::cout << "Choose point input method:\n";
+    std::cout << "1) Preset points\n";
+    std::cout << "2) Custom point\n";
+    std::cout << "Enter choice (1 or 2): ";
+
+    int choice = 0;
+    std::cin >> choice;
+
+    Point center{ 0.0, 0.0 };
+
+    if (choice == 1) {
+        std::cout << "Preset points:\n";
+        for (size_t i = 0; i < presetPoints.size(); ++i) {
+            const auto& np = presetPoints[i];
+            std::cout << i + 1 << ") " << np.name << " (" << np.description << "): "
+                << np.point.x << " + " << np.point.y << "i\n";
+        }
+        std::cout << "Select preset point number: ";
+        int presetChoice = 0;
+        std::cin >> presetChoice;
+
+        if (presetChoice >= 1 && presetChoice <= (int)presetPoints.size()) {
+            center = presetPoints[presetChoice - 1].point;
+        }
+        else {
+            std::cerr << "Invalid preset choice. Using default (0,0).\n";
+        }
+
+    }
+    else if (choice == 2) {
+        std::cout << "Enter real part: ";
+        std::cin >> center.x;
+        std::cout << "Enter imaginary part: ";
+        std::cin >> center.y;
+    }
+    else {
+        std::cerr << "Invalid choice. Using default point (0,0).\n";
+    }
+
+    std::cout << "You selected point: " << center.x << " + " << center.y << "i\n";
+
+    std::string name;
+    std::cout << "Save video file as: ";
+    std::cin >> name;
+
+    if (!endsWith(name, ".mp4")) {
+        name += ".mp4";
+    }
+
+    std::cout << "Saving file as: " << name << "\n";
+    double zoom = 0.2;
 
     std::vector<cuDoubleComplex> z(arraySize, make_cuDoubleComplex(0.0, 0.0));
     std::vector<int> n(arraySize, -1.0);
@@ -195,7 +266,7 @@ int main()
     // ... use rgb ...
     //cudaFreeHost(rgb);
 
-    cv::VideoWriter writer("fractal_video2.mp4",
+    cv::VideoWriter writer(name,
         cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 60, cv::Size(width, height));
 
     CudaFractalGenerator gen;
@@ -210,7 +281,6 @@ int main()
         // init coordinates
 
         auto start = std::chrono::high_resolution_clock::now();
-        //prepareCoordinates(coords, width, height, center.x, center.y, zoom);
 		maxIter = std::min(maxIter + 3, MAX_ITER);
         gen.run(rgb, center, window, zoom, maxIter );
 
@@ -228,7 +298,7 @@ int main()
         // Write the frame
         writer.write(image);
         cv::imshow("Preview", image);
-        int key = cv::waitKey(1);
+        int key = cv::pollKey();
         if (key == 27) break;
 
         //reset
